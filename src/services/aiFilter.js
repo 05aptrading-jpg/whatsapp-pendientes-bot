@@ -69,6 +69,12 @@ export async function filterMessage(rawMessage, ctx = {}) {
     return { es_problema: false, problema_resumen: null, motivo_descarte: 'mensaje_muy_corto' };
   }
 
+  // Saludo/cortesía pura: saludos, gracias, ok, listo, bendiciones, etc.
+  // Si el mensaje SOLO contiene cortesía sin acción, descartar sin llamar a la IA.
+  if (esSaludoOCortesia(trimmed)) {
+    return { es_problema: false, problema_resumen: null, motivo_descarte: 'saludo_o_cortesia' };
+  }
+
   // Llamada al LLM con el payload de entrada definido en el Skill sección 4.
   const userPayload = buildUserPayload(ctx, raw.slice(0, MAX_RAW_CHARS));
   const rawText = await callAi(userPayload);
@@ -124,7 +130,8 @@ function conservativeFallback(raw, ctx) {
   // tiene contenido, se crea el pendiente aunque la IA falle. Esto evita perder
   // urgencias reales cuando las menciones @ no llegan como mentionedJid
   // estructurado (común en WhatsApp) o la API de IA está caída.
-  if (ctx.is_sender_whitelisted === true && text.length > 15) {
+  // Pero nunca crear pendiente si es solo saludo/cortesía.
+  if (ctx.is_sender_whitelisted === true && text.length > 15 && !esSaludoOCortesia(text)) {
     return {
       es_problema: true,
       problema_resumen: text.slice(0, 110) + ' [Sin filtrar por IA]',
@@ -231,6 +238,36 @@ async function callGemini(userPayload, key) {
   } finally {
     done();
   }
+}
+
+/**
+ * Detecta si un mensaje es SOLO saludo/cortesía sin acción requerida.
+ * Ejemplos: "buenos días", "gracias", "ok", "listo", "va", "bendiciones", "👍", etc.
+ * Retorna true si el mensaje NO requiere acción (debe descartarse).
+ */
+function esSaludoOCortesia(texto) {
+  const t = String(texto ?? '')
+    .toLowerCase()
+    .replace(/@\S+/g, '') // quitar menciones @usuario
+    .replace(/[👍👌🙏😊😄😃❤️🙌😁😎✅✔️]/g, '') // quitar emojis comunes
+    .replace(/[.,;:¡¿!?()\-_]/g, ' ') // quitar puntuación
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!t || t.length < 2) return true; // vacío o solo emojis/menciones
+
+  const saludos = [
+    'hola', 'buenos dias', 'buen dia', 'buenas tardes', 'buenas noches',
+    'saludos', 'saludo', 'gracia', 'gracias', 'gracías', 'muchas gracias',
+    'ok', 'oké', 'okay', 'listo', 'va', 'enterado', 'si', 'sí', 'sii',
+    'bendiciones', 'que estén bien', 'que esten bien', 'dios los bendiga',
+    'buen martes', 'buen miercoles', 'buen jueves', 'buen viernes', 'buen sabado', 'buen domingo',
+    'buen lunes', 'buen dia a todos', 'buenas a todos',
+  ];
+
+  const palabras = t.split(/\s+/).filter(Boolean);
+  // Si TODAS las palabras son saludos/cortesías, es un mensaje sin acción
+  return palabras.every(p => saludos.includes(p));
 }
 
 export default { filterMessage };
