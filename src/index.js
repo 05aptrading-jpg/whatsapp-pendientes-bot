@@ -144,8 +144,12 @@ async function handleGroupMessage(sock, msg, remoteJid) {
   if (!key.participant) return; // mensaje sin participante (ej. sistema)
 
   const mentionedJids = msg?.message?.contextInfo?.mentionedJid || [];
-  const mentionedWhitelisted = mentionedJids.some((mjid) => whitelist.has(mjid));
-  const senderWhitelisted = whitelist.has(key.participant);
+  // Normalizar JIDs: Baileys mezcla @lid y @s.whatsapp.net; comparamos por número
+  const jidNumber = (jid) => String(jid || '').split('@')[0].replace(/\D/g, '');
+  const whitelistNumbers = new Set([...whitelist].map(jidNumber).filter(Boolean));
+  const mentionedWhitelisted = mentionedJids.some((mjid) => whitelistNumbers.has(jidNumber(mjid)));
+  const senderWhitelisted = whitelist.has(key.participant) || whitelistNumbers.has(jidNumber(key.participant));
+  logger.warn({ remoteJid, participant: key.participant, mentioned: mentionedJids, senderWhitelisted, mentionedWhitelisted }, 'DEBUG mensaje grupo');
 
   if (!senderWhitelisted && !mentionedWhitelisted) {
     logger.debug({ remoteJid }, 'Descartado: remitente no está en la lista blanca');
@@ -293,6 +297,7 @@ async function connect() {
     auth: state,
     logger: pino({ level: 'error' }),
     browser: Browsers.ubuntu('Chrome'),
+    syncFullHistory: true, // sincroniza claves de sesión de grupos (evita "No session found")
   });
 
   // Código de vinculación (más fácil que escanear QR): PAIRING_PHONE en .env.
