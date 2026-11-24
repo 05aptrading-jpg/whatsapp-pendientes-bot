@@ -1,0 +1,5 @@
+// Rellena estos valores (del proyecto de Supabase) y cópialo como `config.js`.
+const SUPABASE_URL = 'https://<PROYECTO>.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.<resto del token anon>';
+
+export { SUPABASE_URL, SUPABASE_ANON_KEY };

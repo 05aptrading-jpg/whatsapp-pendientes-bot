@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tablero de Pendientes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-50 min-h-screen font-sans">
+    <header class="bg-white border-b border-gray-200 px-4 py-4">
+      <h1 class="text-xl font-semibold text-gray-800">Tablero de Pendientes</h1>
+    </header>
+
+    <main class="p-4 max-w-7xl mx-auto space-y-6">
+      <!-- KPIs -->
+      <section aria-label="KPIs" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div id="kpis"></div>
+      </section>
+
+      <!-- Filtros -->
+      <section class="bg-white rounded-lg shadow p-4 flex flex-wrap items-center gap-3" aria-label="Filtros">
+        <div id="statusFilters" class="flex gap-2"></div>
+        <label class="text-sm text-gray-600 flex items-center gap-2">
+          Grupo origen
+          <select id="groupFilter" class="border border-gray-300 rounded px-2 py-1 text-sm"></select>
+        </label>
+        <input
+          id="searchInput"
+          type="search"
+          placeholder="Buscar código o problema..."
+          class="border border-gray-300 rounded px-3 py-1.5 text-sm"
+        />
+        <button
+          id="exportBtn"
+          class="ml-auto bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+        >
+          Exportar CSV
+        </button>
+      </section>
+
+      <!-- Tabla -->
+      <section class="bg-white rounded-lg shadow overflow-x-auto">
+        <table class="w-full text-sm text-left">
+          <thead class="bg-gray-100 border-b">
+            <tr>
+              <th class="px-4 py-3 font-medium text-gray-600">Código</th>
+              <th class="px-4 py-3 font-medium text-gray-600">Estado</th>
+              <th class="px-4 py-3 font-medium text-gray-600">Grupo</th>
+              <th class="px-4 py-3 font-medium text-gray-600">Involucrado</th>
+              <th class="px-4 py-3 font-medium text-gray-600">Problema principal</th>
+              <th class="px-4 py-3 font-medium text-gray-600">Fecha de creación</th>
+              <th class="px-4 py-3 font-medium text-gray-600">Fecha de cierre</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+        <div id="emptyState" class="p-8 text-center text-gray-400">
+          No hay pendientes para los filtros seleccionados.
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
