@@ -367,9 +367,12 @@ async function init() {
   } else {
     showLogin('');
   }
-  // Reaccionar a cambios de sesión (p. ej. expiración)
-  supabase.auth.onAuthStateChange((_event, session) => {
-    if (!session) showLogin('Sesión finalizada. Vuelve a entrar.');
+  // Reaccionar solo a cierre de sesión explícito (evita pisar el login con SIGNED_OUT interno)
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT') {
+      showLogin('');
+      document.getElementById('loginForm').reset();
+    }
   });
 }
 
