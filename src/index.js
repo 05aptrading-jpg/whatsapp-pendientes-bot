@@ -140,6 +140,14 @@ async function handleBoardMessage(sock, msg, remoteJid) {
  * el Grupo Tablero.
  */
 /**
+ * Devuelve solo el número de teléfono limpio de un JID de WhatsApp.
+ * Ej: '240702779598@lid' -> '240702779598'
+ */
+function cleanUser(jid) {
+  return String(jid || '').split('@')[0].replace(/\D/g, '') || String(jid || '');
+}
+
+/**
  * Detecta el área responsable por prefijo al inicio del mensaje.
  * Formato aceptado: "QA: ...", "PE: ...", "MFG: ..." (case insensitive).
  * Devuelve { area, textoSinPrefijo } donde area es 'Calidad', 'Producto' o 'Manufactura'
@@ -170,9 +178,10 @@ async function handleGroupMessage(sock, msg, remoteJid) {
   }
 
   const groupMeta = await sock.groupMetadata(remoteJid).catch(() => ({}));
+  const contactName = displayName(sock, key.participant);
   const ctx = {
     source_group_name: groupMeta?.subject || displayName(sock, remoteJid),
-    sender_name: displayName(sock, key.participant),
+    sender_name: contactName && contactName !== key.participant ? contactName : cleanUser(key.participant),
     is_sender_whitelisted: senderWhitelisted,
     has_whitelisted_mention: mentionedWhitelisted,
   };
