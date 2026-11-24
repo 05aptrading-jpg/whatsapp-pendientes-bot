@@ -40,14 +40,34 @@ export function isWhatsappJid(jid) {
 
 /**
  * Nombre de displays a mostrar: intenta obtener el nombre del contacto del store
- * de Baileys; si no está, usa el JID en bruto.
+ * de Baileys (probando @s.whatsapp.net y @lid). Si no está en la agenda, usa
+ * solo el número de teléfono limpio (sin @lid ni @s.whatsapp.net).
  */
 export function displayName(sock, jid) {
   if (!jid) return '';
-  try {
-    const contact = sock.getContact?.(jid)?.name;
-    return contact || jid;
-  } catch {
-    return jid;
+  const jidStr = String(jid);
+  const numOnly = jidStr.split('@')[0].replace(/\D/g, '');
+
+  // Intentar obtener el nombre probando múltiples formas del JID
+  const candidates = [
+    jidStr,
+    jidStr.replace('@lid', '@s.whatsapp.net'),
+    jidStr.replace('@s.whatsapp.net', '@lid'),
+    `${numOnly}@s.whatsapp.net`,
+    `${numOnly}@lid`,
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const contact = sock.getContact?.(candidate)?.name;
+      if (contact && contact !== candidate) {
+        return contact;
+      }
+    } catch {
+      // seguir probando
+    }
   }
+
+  // Si no hay nombre en la agenda, devolver solo el número limpio
+  return numOnly || jidStr;
 }
