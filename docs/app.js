@@ -352,12 +352,12 @@ function wireAuthEvents() {
       if (error) {
         showLogin('Error: ' + error.message);
       } else {
-        // Mostramos la app INMEDIATAMENTE, antes de cualquier consulta que pueda fallar
-        showApp();
         currentRole = await loadUserRole();
         applyRole();
+        // Cargamos datos primero; mostramos la app al final para que nada la oculte
+        await startApp().catch(() => {});
+        showApp();
         btn.textContent = 'Entrar';
-        startApp().catch(() => {});
       }
     } catch (err) {
       showLogin('Error: ' + err.message);
@@ -384,15 +384,13 @@ async function init() {
   wireAuthEvents();
   const { data: { session } } = await supabase.auth.getSession();
   if (session) {
-    showApp();
     currentRole = await loadUserRole();
     applyRole();
-    startApp().catch(() => {});
+    showApp();
+    await startApp().catch(() => {});
   } else {
     showLogin('');
   }
-  // No reaccionamos a onAuthStateChange: Supabase emite SIGNED_OUT transitorio
-  // durante el login y eso volvía a ocultar la app. El logout ya limpia la UI.
 }
 
 init();
