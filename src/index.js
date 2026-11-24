@@ -9,6 +9,15 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 
 const BOARD_GROUP_JID = process.env.BOARD_GROUP_JID;
 
+// Grupos a monitorear (separados por coma). Si está vacío, se monitorean todos
+// los grupos excepto el Grupo Tablero. Ej:
+// MONITORED_GROUPS=123-456@g.us,789-012@g.us
+const MONITORED_GROUPS = (process.env.MONITORED_GROUPS || '')
+  .split(',')
+  .map((jid) => jid.trim())
+  .filter(Boolean);
+const MONITOR_SET = new Set(MONITORED_GROUPS);
+
 // Cada vez que se genere un código de vinculación se guarda aquí para poder
 // leerlo desde fuera sin depender de la consola.
 const PAIRING_CODE_FILE = './pairing_code.txt';
@@ -220,8 +229,14 @@ async function handleMessage(sock, msg) {
     return;
   }
 
-  // Comando auxiliar !id en grupos
+  // Comando auxiliar !id en grupos (funciona en cualquier grupo)
   await handleIdCommand(sock, msg, remoteJid);
+
+  // Filtro de grupos monitoreados: si hay lista definida, solo esos grupos.
+  if (MONITOR_SET.size > 0 && !MONITOR_SET.has(remoteJid)) {
+    logger.debug({ remoteJid }, 'Grupo no está en MONITORED_GROUPS, ignorado');
+    return;
+  }
 
   // Grupos monitoreados
   await handleGroupMessage(sock, msg, remoteJid);
