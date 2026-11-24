@@ -126,7 +126,19 @@ function toggleGroup(jid, active) {
   const g = state.groups.find((x) => x.jid === jid);
   if (g) g.active = active;
   setDirty(true);
-  renderGroups(); // resalta los activos y actualiza el contador
+  // Actualizamos SOLO el estilo del label y el contador, sin re-renderizar
+  // (re-renderizar destruiría el checkbox que el usuario acaba de marcar).
+  const cb = document.querySelector(`input[data-jid="${CSS.escape(jid)}"]`);
+  if (cb) {
+    const label = cb.closest('label');
+    if (label) {
+      label.className = `flex items-start gap-2 p-2 rounded border ${
+        active ? 'border-blue-300 bg-blue-50' : 'border-gray-200'
+      } hover:bg-gray-50 cursor-pointer`;
+    }
+  }
+  const activeCount = state.groups.filter((x) => x.active).length;
+  document.getElementById('groupsCount').textContent = `${activeCount} activos de ${state.groups.length}`;
 }
 
 async function saveGroups() {
