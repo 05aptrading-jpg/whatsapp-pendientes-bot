@@ -38,7 +38,12 @@ CREATE TABLE IF NOT EXISTS monitored_groups (
   added_at   timestamptz NOT NULL DEFAULT now()
 );
 
--- 4) RLS: dashboard en GitHub Pages consulta solo con anon (lectura de incidents).
+-- 4) Permisos: el bot usa service_role en TODAS las tablas; el dashboard usa anon.
+GRANT ALL ON incidents, whitelist, monitored_groups TO service_role;
+GRANT SELECT ON incidents, whitelist, monitored_groups TO anon;
+GRANT SELECT, UPDATE ON monitored_groups TO anon;
+
+-- RLS: dashboard en GitHub Pages consulta solo con anon (lectura de incidents).
 ALTER TABLE incidents ENABLE ROW LEVEL SECURITY;
 
 -- PostgreSQL no soporta `CREATE POLICY IF NOT EXISTS`: se protege con un bloque DO.

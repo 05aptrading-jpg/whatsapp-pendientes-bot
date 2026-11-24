@@ -84,7 +84,7 @@ async function fetchGroups() {
     .select('jid, group_name, active')
     .order('group_name', { ascending: true });
   if (error) throw new Error(error.message);
-  return data || [];
+  return (data || []).map((g) => ({ ...g, _savedActive: g.active }));
 }
 
 function renderGroups() {
@@ -116,17 +116,42 @@ function renderGroups() {
   errEl.classList.add('hidden');
 }
 
-async function toggleGroup(jid, active) {
-  const errEl = document.getElementById('groupsError');
-  const { error } = await supabase.from('monitored_groups').update({ active }).eq('jid', jid);
-  if (error) {
-    errEl.textContent = 'Error al guardar: ' + error.message;
-    errEl.classList.remove('hidden');
-    return;
-  }
+function setDirty(dirty) {
+  document.getElementById('groupsDirty').classList.toggle('hidden', !dirty);
+  document.getElementById('saveGroupsBtn').disabled = !dirty;
+}
+
+// Los cambios de checkbox quedan "pendientes" en memoria hasta presionar Guardar.
+function toggleGroup(jid, active) {
   const g = state.groups.find((x) => x.jid === jid);
   if (g) g.active = active;
-  renderGroups();
+  setDirty(true);
+  renderGroups(); // resalta los activos y actualiza el contador
+}
+
+async function saveGroups() {
+  const errEl = document.getElementById('groupsError');
+  const btn = document.getElementById('saveGroupsBtn');
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+  try {
+    // Guardamos solo los cambios对比 con lo que hay en DB (estado guardado).
+    const changes = state.groups.filter((g) => g.active !== (g._savedActive ?? false));
+    for (const g of changes) {
+      const { error } = await supabase.from('monitored_groups').update({ active: g.active }).eq('jid', g.jid);
+      if (error) throw error;
+      g._savedActive = g.active;
+    }
+    errEl.classList.add('hidden');
+    btn.textContent = '✓ Guardado';
+    setDirty(false);
+    setTimeout(() => { btn.textContent = 'Guardar'; }, 1500);
+  } catch (err) {
+    errEl.textContent = 'Error al guardar: ' + err.message;
+    errEl.classList.remove('hidden');
+    btn.textContent = 'Guardar';
+    setDirty(true);
+  }
 }
 
 function renderStatusFilters() {
@@ -226,8 +251,14 @@ function wireEvents() {
     }, 100);
   });
 
-  // Refrescar los checkboxes por si el bot agregó nuevos grupos
-  setInterval(() => { renderGroupsAll(); }, 60000);
+  // Guardar con el botón
+  document.getElementById('saveGroupsBtn').addEventListener('click', saveGroups);
+
+  // Refrescar los checkboxes solo si no hay cambios pendientes de guardar
+  setInterval(() => {
+    const dirty = !document.getElementById('saveGroupsBtn').disabled;
+    if (!dirty) renderGroupsAll();
+  }, 60000);
 }
 
 renderAll()
