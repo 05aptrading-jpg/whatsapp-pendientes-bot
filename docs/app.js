@@ -297,9 +297,62 @@ function wireEvents() {
   }, 60000);
 }
 
-renderAll()
-  .then(wireEvents)
-  .catch((err) => {
-    document.getElementById('emptyState').textContent = 'Error al cargar los datos: ' + err.message;
+// ---------- Autenticación ----------
+function showApp() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+}
+function showLogin(msg) {
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  const el = document.getElementById('loginError');
+  if (msg) { el.textContent = msg; el.classList.remove('hidden'); }
+  else { el.classList.add('hidden'); }
+}
+
+function wireAuthEvents() {
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true; btn.textContent = 'Entrando...';
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    btn.disabled = false; btn.textContent = 'Entrar';
+    if (error) {
+      showLogin('Error: ' + error.message);
+    } else {
+      showLogin('');
+      startApp();
+    }
   });
-renderGroupsAll();
+
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await supabase.auth.signOut();
+    showLogin('');
+    document.getElementById('loginForm').reset();
+  });
+}
+
+async function startApp() {
+  await renderAll();
+  await renderGroupsAll();
+  wireEvents();
+}
+
+async function init() {
+  wireAuthEvents();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    showApp();
+    await startApp();
+  } else {
+    showLogin('');
+  }
+  // Reaccionar a cambios de sesión (p. ej. expiración)
+  supabase.auth.onAuthStateChange((_event, session) => {
+    if (!session) showLogin('Sesión finalizada. Vuelve a entrar.');
+  });
+}
+
+init();

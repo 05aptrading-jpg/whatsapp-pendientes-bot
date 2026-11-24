@@ -1,4 +1,4 @@
--- Supabase schema: WhatsApp pendientes dashboard (tabla `incidents` + `whitelist`)
+-- Supabase schema: WhatsApp pendientes dashboard (tablas `incidents` + `whitelist` + `monitored_groups`)
 -- Ejecutar en el Dashboard de Supabase (SQL Editor) o con psql.
 
 -- 1) Tabla `incidents`: un registro por pendiente que se crea desde grupos monitoreados.
@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS incidents (
   closed_at         timestamptz                      -- Fecha de cierre (vacío al reabrir)
 );
 
--- Índices útiles para el dashboard
 CREATE INDEX IF NOT EXISTS incidents_status_idx ON incidents (status);
 CREATE INDEX IF NOT EXISTS incidents_source_group_idx ON incidents (source_group_jid);
 
@@ -30,7 +29,6 @@ CREATE TABLE IF NOT EXISTS whitelist (
 );
 
 -- 3) Tabla `monitored_groups`: grupos en los que está el bot y cuáles monitorear.
---    El dashboard (anon) puede leer la lista y marcar/desmarcar con checkbox.
 CREATE TABLE IF NOT EXISTS monitored_groups (
   jid        text PRIMARY KEY,                       -- JID del grupo (@g.us)
   group_name text,                                   -- Nombre/subject del grupo
@@ -38,43 +36,60 @@ CREATE TABLE IF NOT EXISTS monitored_groups (
   added_at   timestamptz NOT NULL DEFAULT now()
 );
 
--- 4) Permisos: el bot usa service_role en TODAS las tablas; el dashboard usa anon.
-GRANT ALL ON incidents, whitelist, monitored_groups TO service_role;
-GRANT SELECT ON incidents, whitelist, monitored_groups TO anon;
-GRANT SELECT, UPDATE ON monitored_groups TO anon;
+-- 4) Tabla `allowed_emails`: correos con acceso al dashboard.
+CREATE TABLE IF NOT EXISTS allowed_emails (
+  email     text PRIMARY KEY,
+  added_at  timestamptz NOT NULL DEFAULT now()
+);
 
--- RLS: dashboard en GitHub Pages consulta solo con anon (lectura de incidents).
+-- 5) Permisos: el bot usa service_role en TODAS las tablas.
+GRANT ALL ON incidents, whitelist, monitored_groups, allowed_emails TO service_role;
+
+-- Solo usuarios AUTENTICADOS pueden leer/escribir datos del dashboard.
+GRANT SELECT ON incidents, whitelist, monitored_groups TO authenticated;
+GRANT SELECT, UPDATE ON monitored_groups TO authenticated;
+
+-- 6) Trigger: solo permite registro en Auth si el email está en `allowed_emails`.
+CREATE OR REPLACE FUNCTION public.check_allowed_email() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM allowed_emails WHERE lower(email) = lower(NEW.email)) THEN
+    RAISE EXCEPTION 'Email no autorizado para este dashboard';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_check_allowed_email ON auth.users;
+CREATE TRIGGER trg_check_allowed_email
+  BEFORE INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.check_allowed_email();
+
+-- 7) Revocar cualquier grant público/anon heredado (acceso solo con login)
+REVOKE ALL ON incidents, monitored_groups, whitelist, allowed_emails FROM anon;
+REVOKE ALL ON incidents, monitored_groups, whitelist, allowed_emails FROM public;
+
+-- 8) RLS
 ALTER TABLE incidents ENABLE ROW LEVEL SECURITY;
-
--- PostgreSQL no soporta `CREATE POLICY IF NOT EXISTS`: se protege con un bloque DO.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'incidents' AND policyname = 'anon_select_incidents'
-  ) THEN
-    CREATE POLICY "anon_select_incidents" ON incidents FOR SELECT TO anon USING (true);
-  END IF;
-END $$;
-
--- RLS de monitored_groups: anon puede listar y cambiar el checkbox `active`.
--- (el bot usa service_role, que necesita permisos explícitos sobre la tabla)
-GRANT ALL ON monitored_groups TO service_role;
-GRANT SELECT, UPDATE ON monitored_groups TO anon;
 ALTER TABLE monitored_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE allowed_emails ENABLE ROW LEVEL SECURITY;
+
+-- Limpiar políticas antiguas de anon (acceso público) si existieran
+DROP POLICY IF EXISTS "anon_select_incidents" ON incidents;
+DROP POLICY IF EXISTS "anon_select_monitored_groups" ON monitored_groups;
+DROP POLICY IF EXISTS "anon_update_monitored_groups" ON monitored_groups;
 
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'monitored_groups' AND policyname = 'anon_select_monitored_groups'
-  ) THEN
-    CREATE POLICY "anon_select_monitored_groups" ON monitored_groups FOR SELECT TO anon USING (true);
+  -- incidents: lectura para usuarios autenticados
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='incidents' AND policyname='auth_select_incidents') THEN
+    CREATE POLICY "auth_select_incidents" ON incidents FOR SELECT TO authenticated USING (true);
   END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'public' AND tablename = 'monitored_groups' AND policyname = 'anon_update_monitored_groups'
-  ) THEN
-    CREATE POLICY "anon_update_monitored_groups" ON monitored_groups FOR UPDATE TO anon USING (true) WITH CHECK (true);
+  -- monitored_groups: lectura y update del checkbox para autenticados
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='monitored_groups' AND policyname='auth_select_monitored_groups') THEN
+    CREATE POLICY "auth_select_monitored_groups" ON monitored_groups FOR SELECT TO authenticated USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='monitored_groups' AND policyname='auth_update_monitored_groups') THEN
+    CREATE POLICY "auth_update_monitored_groups" ON monitored_groups FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
   END IF;
 END $$;
