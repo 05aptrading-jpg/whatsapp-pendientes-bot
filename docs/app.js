@@ -281,14 +281,12 @@ function wireEvents() {
   // Guardar con el botón
   document.getElementById('saveGroupsBtn').addEventListener('click', saveGroups);
 
-  // Colapsar / expandir
+  // Colapsar / expandir — por defecto SIEMPRE expandido al cargar
   document.getElementById('toggleGroupsBtn').addEventListener('click', () => {
     const body = document.getElementById('groupsBody');
     setGroupsCollapsed(!body.classList.contains('hidden'));
   });
-  let savedCollapsed = false;
-  try { savedCollapsed = localStorage.getItem('groupsCollapsed') === '1'; } catch (e) {}
-  setGroupsCollapsed(savedCollapsed);
+  setGroupsCollapsed(false);
 
   // Refrescar los checkboxes solo si no hay cambios pendientes de guardar
   setInterval(() => {
