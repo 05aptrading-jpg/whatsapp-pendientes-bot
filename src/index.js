@@ -136,6 +136,37 @@ async function handleBoardMessage(sock, msg, remoteJid) {
 }
 
 /**
+ * Cierra el último incidente ABIERTO de un grupo específico cuando alguien
+ * escribe "listo", "cerrado" o "resuelto" en ese grupo.
+ * @param {Object} sock - socket de Baileys
+ * @param {string} remoteJid - JID del grupo donde se escribió
+ * @param {string} by - nombre de quien cierra
+ */
+async function cerrarUltimoIncidenteGrupo(sock, remoteJid, by) {
+  const { data: incident } = await supabase
+    .from('incidents')
+    .select('id, code, source_group_jid, source_group_name')
+    .eq('source_group_jid', remoteJid)
+    .eq('status', 'ABIERTO')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!incident) return false;
+
+  await supabase
+    .from('incidents')
+    .update({ status: 'CERRADO', closed_at: new Date().toISOString(), updated_by: by })
+    .eq('id', incident.id);
+
+  await sock.sendMessage(BOARD_GROUP_JID, {
+    text: `🟢 *[${incident.code}]* actualizado a *CERRADO* por ${by}.`,
+  });
+  logger.info({ code: incident.code, remoteJid, by }, 'Pendiente cerrado desde grupo');
+  return true;
+}
+
+/**
  * Flujo de grupos monitoreados: filtro por IA -> crear incidente -> publicar en
  * el Grupo Tablero.
  */
@@ -163,6 +194,36 @@ function extraerAreaResponsable(texto) {
 async function handleGroupMessage(sock, msg, remoteJid) {
   const key = msg?.key || {};
   if (!key.participant) return; // mensaje sin participante (ej. sistema)
+
+  // --- NUEVO: Detectar si es una respuesta (reply/quote) a un mensaje existente ---
+  // Si alguien responde/cita un mensaje que es un incidente abierto, cerrarlo.
+  const quotedMessage = msg?.message?.contextInfo?.quotedMessage;
+  if (quotedMessage && quotedMessage.key?.id) {
+    const quotedId = quotedMessage.key.id;
+    const { data: targetIncident } = await supabase
+      .from('incidents')
+      .select('id, code, status, source_group_jid')
+      .eq('board_message_id', quotedId)
+      .maybeSingle();
+    if (targetIncident && targetIncident.status === 'ABIERTO') {
+      const text = normalizeText(extractText(msg.message));
+      const by = displayName(sock, key.participant);
+      const cerradoKeywords = ['listo', 'cerrado', 'resuelto'];
+      if (cerradoKeywords.some(k => text.includes(k))) {
+        await supabase
+          .from('incidents')
+          .update({ status: 'CERRADO', closed_at: new Date().toISOString(), updated_by: by })
+          .eq('id', targetIncident.id);
+        await sock.sendMessage(BOARD_GROUP_JID, {
+          text: `🟢 *[${targetIncident.code}]* actualizado a *CERRADO* por ${by}.`,
+          quoted: msg,
+        });
+        logger.info({ code: targetIncident.code, remoteJid, by }, 'Pendiente cerrado por reply en grupo');
+        return; // No seguir con creación de incidente
+      }
+    }
+  }
+  // ---------------------------------------------------------------
 
   const mentionedJids = msg?.message?.contextInfo?.mentionedJid || [];
   // Normalizar JIDs: Baileys mezcla @lid y @s.whatsapp.net; comparamos por número
@@ -221,20 +282,12 @@ async function handleGroupMessage(sock, msg, remoteJid) {
   const realCode = `INC-${incident.id}`;
   await supabase.from('incidents').update({ code: realCode }).eq('id', incident.id);
 
-  const areaTxt = area ? ` | *Área:* ${area}` : '';
-  const boardText = [
-    `🔴 *[${realCode}]* | *Estado:* ABIERTO${areaTxt}`,
-    `*Grupo:* ${ctx.source_group_name}`,
-    `*Involucrado:* ${ctx.sender_name}`,
-    `*Problema:* ${resumenFinal}`,
-  ].join('\n');
-
-  const { data: sent } = await sock.sendMessage(BOARD_GROUP_JID, { text: boardText });
-  const boardMessageId = sent?.key?.id;
-  if (boardMessageId) {
-    await supabase.from('incidents').update({ board_message_id: boardMessageId }).eq('id', incident.id);
-  }
-  logger.info({ code: realCode, remoteJid }, 'Pendiente creado y publicado en el Grupo Tablero');
+  // Guardar el ID original de WhatsApp de este mensaje (key.id) para poder
+  // cerrarlo después cuando alguien responda (reply) a este mensaje.
+  // No enviamos mensaje extra al Grupo Tablero; usamos el ID que ya nos
+  // proporcionó WhatsApp con el mensaje original.
+  await supabase.from('incidents').update({ board_message_id: key.id }).eq('id', incident.id);
+  logger.info({ code: realCode, remoteJid, WhatsAppKey: key.id }, 'Pendiente creado sin publicar en Board');
 }
 
 /**
