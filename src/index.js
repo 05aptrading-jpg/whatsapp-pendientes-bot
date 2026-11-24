@@ -9,14 +9,16 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 
 const BOARD_GROUP_JID = process.env.BOARD_GROUP_JID;
 
-// Grupos a monitorear (separados por coma). Si está vacío, se monitorean todos
-// los grupos excepto el Grupo Tablero. Ej:
-// MONITORED_GROUPS=123-456@g.us,789-012@g.us
+// Grupos a monitorear. Fuente de verdad = tabla `monitored_groups` de Supabase
+// (el dashboard marca los checkboxes). MONITORED_GROUPS del .env se usa como
+// valor inicial/semilla solo si la tabla está vacía. Si no hay ninguno activo,
+// se monitorean todos los grupos excepto el Tablero.
 const MONITORED_GROUPS = (process.env.MONITORED_GROUPS || '')
   .split(',')
   .map((jid) => jid.trim())
   .filter(Boolean);
-const MONITOR_SET = new Set(MONITORED_GROUPS);
+let monitorSet = new Set(); // jids activos desde DB (o semilla del .env)
+let hasDbConfig = false;    // true si la tabla tiene filas
 
 // Cada vez que se genere un código de vinculación se guarda aquí para poder
 // leerlo desde fuera sin depender de la consola.
@@ -232,14 +234,55 @@ async function handleMessage(sock, msg) {
   // Comando auxiliar !id en grupos (funciona en cualquier grupo)
   await handleIdCommand(sock, msg, remoteJid);
 
-  // Filtro de grupos monitoreados: si hay lista definida, solo esos grupos.
-  if (MONITOR_SET.size > 0 && !MONITOR_SET.has(remoteJid)) {
-    logger.debug({ remoteJid }, 'Grupo no está en MONITORED_GROUPS, ignorado');
+  // Filtro de grupos monitoreados: si hay configuración, solo los activos.
+  if (monitorSet.size > 0 && !monitorSet.has(remoteJid)) {
+    logger.debug({ remoteJid }, 'Grupo no está en monitored_groups activos, ignorado');
     return;
   }
 
   // Grupos monitoreados
   await handleGroupMessage(sock, msg, remoteJid);
+}
+
+/**
+ * Carga los grupos activos desde Supabase. Si la tabla está vacía, siembra con
+ * MONITORED_GROUPS del .env (o deja vacío = monitorear todos).
+ */
+async function loadMonitoredGroups() {
+  const { data, error } = await supabase.from('monitored_groups').select('jid, active');
+  if (error) {
+    logger.error({ err: error }, 'Error leyendo monitored_groups');
+    return;
+  }
+  if (!data || data.length === 0) {
+    hasDbConfig = false;
+    monitorSet = new Set(MONITORED_GROUPS);
+    return;
+  }
+  hasDbConfig = true;
+  monitorSet = new Set(data.filter((g) => g.active).map((g) => g.jid));
+  logger.info({ active: monitorSet.size, total: data.length }, 'Grupos monitoreados cargados desde DB');
+}
+
+/**
+ * Sincroniza los grupos en los que está el bot hacia `monitored_groups`.
+ * No sobrescribe el checkbox `active` de grupos ya existentes.
+ */
+async function syncGroupsToDb(sock) {
+  try {
+    const groups = await sock.groupFetchAllParticipating();
+    const rows = Object.values(groups).map((g) => ({
+      jid: g.id,
+      group_name: g.subject || g.id,
+    }));
+    for (const row of rows) {
+      await supabase.from('monitored_groups').upsert(row, { onConflict: 'jid', ignoreDuplicates: true });
+    }
+    logger.info({ count: rows.length }, 'Grupos sincronizados en monitored_groups');
+    await loadMonitoredGroups();
+  } catch (err) {
+    logger.error({ err }, 'Error sincronizando grupos a DB');
+  }
 }
 
 async function connect() {
@@ -277,14 +320,19 @@ async function connect() {
     if (update.connection === 'authenticated') {
       logger.info({ me: sock.user?.id }, 'Sesión autenticada');
       await syncWhitelistFromDb();
+      await loadMonitoredGroups();
     }
 
     if (update.connection === 'open') {
       try {
         await syncWhitelistFromBoardGroup(sock);
+        await syncGroupsToDb(sock);
       } catch (err) {
         logger.error({ err }, 'Error sincronizando lista blanca con Grupo Tablero');
       }
+
+      // Refrescar los checkboxes del dashboard sin reiniciar el bot
+      setInterval(() => { loadMonitoredGroups().catch(() => {}); }, 20000);
 
       sock.ev.on('messages.upsert', ({ messages }) => {
         for (const msg of messages) {

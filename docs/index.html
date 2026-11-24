@@ -38,6 +38,31 @@
         </button>
       </section>
 
+      <!-- Grupos monitoreados (checkboxes) -->
+      <section class="bg-white rounded-lg shadow p-4" aria-label="Grupos monitoreados">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 class="text-base font-semibold text-gray-800">Grupos monitoreados</h2>
+            <p class="text-xs text-gray-500">
+              Marca los grupos de los que el bot debe crear pendientes. El cambio se aplica solo (~20 s).
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="groupsCount" class="text-xs text-gray-500"></span>
+            <input
+              id="groupSearchInput"
+              type="search"
+              placeholder="Buscar grupo..."
+              class="border border-gray-300 rounded px-2 py-1 text-sm"
+            />
+          </div>
+        </div>
+        <div id="groupsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-80 overflow-y-auto pr-1">
+          <p class="text-sm text-gray-400">Cargando grupos...</p>
+        </div>
+        <p id="groupsError" class="text-xs text-red-600 mt-2 hidden"></p>
+      </section>
+
       <!-- Tabla -->
       <section class="bg-white rounded-lg shadow overflow-x-auto">
         <table class="w-full text-sm text-left">

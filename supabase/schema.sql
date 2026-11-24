@@ -29,7 +29,16 @@ CREATE TABLE IF NOT EXISTS whitelist (
   added_at     timestamptz NOT NULL DEFAULT now()
 );
 
--- 3) RLS: dashboard en GitHub Pages consulta solo con anon (lectura de incidents).
+-- 3) Tabla `monitored_groups`: grupos en los que está el bot y cuáles monitorear.
+--    El dashboard (anon) puede leer la lista y marcar/desmarcar con checkbox.
+CREATE TABLE IF NOT EXISTS monitored_groups (
+  jid        text PRIMARY KEY,                       -- JID del grupo (@g.us)
+  group_name text,                                   -- Nombre/subject del grupo
+  active     boolean NOT NULL DEFAULT false,         -- ¿monitorear este grupo?
+  added_at   timestamptz NOT NULL DEFAULT now()
+);
+
+-- 4) RLS: dashboard en GitHub Pages consulta solo con anon (lectura de incidents).
 ALTER TABLE incidents ENABLE ROW LEVEL SECURITY;
 
 -- PostgreSQL no soporta `CREATE POLICY IF NOT EXISTS`: se protege con un bloque DO.
@@ -40,5 +49,27 @@ BEGIN
     WHERE schemaname = 'public' AND tablename = 'incidents' AND policyname = 'anon_select_incidents'
   ) THEN
     CREATE POLICY "anon_select_incidents" ON incidents FOR SELECT TO anon USING (true);
+  END IF;
+END $$;
+
+-- RLS de monitored_groups: anon puede listar y cambiar el checkbox `active`.
+-- (el bot usa service_role, que necesita permisos explícitos sobre la tabla)
+GRANT ALL ON monitored_groups TO service_role;
+GRANT SELECT, UPDATE ON monitored_groups TO anon;
+ALTER TABLE monitored_groups ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'monitored_groups' AND policyname = 'anon_select_monitored_groups'
+  ) THEN
+    CREATE POLICY "anon_select_monitored_groups" ON monitored_groups FOR SELECT TO anon USING (true);
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'monitored_groups' AND policyname = 'anon_update_monitored_groups'
+  ) THEN
+    CREATE POLICY "anon_update_monitored_groups" ON monitored_groups FOR UPDATE TO anon USING (true) WITH CHECK (true);
   END IF;
 END $$;

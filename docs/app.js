@@ -3,7 +3,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const state = { records: [], statusFilter: 'TODOS', groupFilter: '', search: '' };
+const state = { records: [], statusFilter: 'TODOS', groupFilter: '', search: '', groups: [], groupSearch: '' };
 
 const COLORS = {
   ABIERTO: 'bg-red-100 text-red-700',
@@ -78,6 +78,57 @@ function renderTable(records) {
   document.getElementById('emptyState').classList.toggle('hidden', rows.length > 0);
 }
 
+async function fetchGroups() {
+  const { data, error } = await supabase
+    .from('monitored_groups')
+    .select('jid, group_name, active')
+    .order('group_name', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+function renderGroups() {
+  const list = document.getElementById('groupsList');
+  const errEl = document.getElementById('groupsError');
+  const q = state.groupSearch;
+  const shown = state.groups.filter(
+    (g) => !q || (g.group_name || '').toLowerCase().includes(q) || g.jid.toLowerCase().includes(q)
+  );
+  const activeCount = state.groups.filter((g) => g.active).length;
+  document.getElementById('groupsCount').textContent = `${activeCount} activos de ${state.groups.length}`;
+
+  if (!shown.length) {
+    list.innerHTML = '<p class="text-sm text-gray-400 col-span-full">No hay grupos que coincidan.</p>';
+    return;
+  }
+  list.innerHTML = shown
+    .map((g) => {
+      const id = `grp_${btoa(g.jid).replace(/[^a-zA-Z0-9]/g, '')}`;
+      return `<label for="${id}" class="flex items-start gap-2 p-2 rounded border ${g.active ? 'border-blue-300 bg-blue-50' : 'border-gray-200'} hover:bg-gray-50 cursor-pointer">
+        <input type="checkbox" id="${id}" data-jid="${esc(g.jid)}" ${g.active ? 'checked' : ''} class="mt-0.5 h-4 w-4 text-blue-600 rounded" />
+        <span class="min-w-0">
+          <span class="block text-sm text-gray-700 truncate" title="${esc(g.group_name || g.jid)}">${esc(g.group_name || g.jid)}</span>
+          <span class="block text-[10px] text-gray-400 truncate" title="${esc(g.jid)}">${esc(g.jid)}</span>
+        </span>
+      </label>`;
+    })
+    .join('');
+  errEl.classList.add('hidden');
+}
+
+async function toggleGroup(jid, active) {
+  const errEl = document.getElementById('groupsError');
+  const { error } = await supabase.from('monitored_groups').update({ active }).eq('jid', jid);
+  if (error) {
+    errEl.textContent = 'Error al guardar: ' + error.message;
+    errEl.classList.remove('hidden');
+    return;
+  }
+  const g = state.groups.find((x) => x.jid === jid);
+  if (g) g.active = active;
+  renderGroups();
+}
+
 function renderStatusFilters() {
   const opts = [['TODOS', 'TODOS'], ['ABIERTO', 'ABIERTO'], ['CERRADO', 'CERRADO'], ['REABIERTO', 'REABIERTO']];
   document.getElementById('statusFilters').innerHTML = opts
@@ -128,6 +179,17 @@ async function renderAll() {
   renderStatusFilters();
 }
 
+async function renderGroupsAll() {
+  try {
+    state.groups = await fetchGroups();
+    renderGroups();
+  } catch (err) {
+    const el = document.getElementById('groupsError');
+    el.textContent = 'Error al cargar grupos: ' + err.message;
+    el.classList.remove('hidden');
+  }
+}
+
 function wireEvents() {
   document.getElementById('statusFilters').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-status]');
@@ -149,6 +211,23 @@ function wireEvents() {
     }, 100);
   });
   document.getElementById('exportBtn').addEventListener('click', exportCSV);
+
+  document.getElementById('groupsList').addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"][data-jid]');
+    if (cb) toggleGroup(cb.dataset.jid, cb.checked);
+  });
+
+  let groupSearchTimer = null;
+  document.getElementById('groupSearchInput').addEventListener('input', (e) => {
+    clearTimeout(groupSearchTimer);
+    groupSearchTimer = setTimeout(() => {
+      state.groupSearch = e.target.value.trim().toLowerCase();
+      renderGroups();
+    }, 100);
+  });
+
+  // Refrescar los checkboxes por si el bot agregó nuevos grupos
+  setInterval(() => { renderGroupsAll(); }, 60000);
 }
 
 renderAll()
@@ -156,3 +235,4 @@ renderAll()
   .catch((err) => {
     document.getElementById('emptyState').textContent = 'Error al cargar los datos: ' + err.message;
   });
+renderGroupsAll();
