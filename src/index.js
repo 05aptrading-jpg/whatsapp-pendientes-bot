@@ -156,8 +156,9 @@ async function handleGroupMessage(sock, msg, remoteJid) {
     return;
   }
 
+  const groupMeta = await sock.groupMetadata(remoteJid).catch(() => ({}));
   const ctx = {
-    source_group_name: displayName(sock, remoteJid),
+    source_group_name: groupMeta?.subject || displayName(sock, remoteJid),
     sender_name: displayName(sock, key.participant),
     is_sender_whitelisted: senderWhitelisted,
     has_whitelisted_mention: mentionedWhitelisted,
