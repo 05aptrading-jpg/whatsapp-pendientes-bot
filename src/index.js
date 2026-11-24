@@ -186,7 +186,7 @@ function cleanUser(jid) {
  */
 function extraerAreaResponsable(texto) {
   const m = String(texto ?? '').match(/^\s*(QA|PE|MFG)\s*[:：]?\s*(.*)$/i);
-  if (!m) return { area: '', textoSinPrefijo: String(texto ?? '') };
+  if (!m) return null; // Sin prefijo QA/PE/MFG → se descarta el mensaje
   const mapa = { QA: 'Calidad', PE: 'Producto', MFG: 'Manufactura' };
   return { area: mapa[m[1].toUpperCase()], textoSinPrefijo: m[2].trim() };
 }
@@ -253,8 +253,14 @@ async function handleGroupMessage(sock, msg, remoteJid) {
     return;
   }
 
-  // Extraer área responsable por prefijo (QA/PE/MFG) y limpiarla del resumen
-  const { area, textoSinPrefijo } = extraerAreaResponsable(extractText(msg.message));
+  // Extraer área responsable por prefijo (QA/PE/MFG).
+  // Si el mensaje NO tiene QA:/PE:/MFG al inicio, se descarta y no se crea incidencia.
+  const areaInfo = extraerAreaResponsable(extractText(msg.message));
+  if (!areaInfo) {
+    logger.debug({ remoteJid }, 'Descartado: mensaje sin prefijo QA/PE/MFG');
+    return;
+  }
+  const { area, textoSinPrefijo } = areaInfo;
   const resumenFinal = filter.problema_resumen || textoSinPrefijo;
 
   const code = `INC-${Date.now()}`; // reemplazado por el código real (INC-<id serial>) tras insertar
