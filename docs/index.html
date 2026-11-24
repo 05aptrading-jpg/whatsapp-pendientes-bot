@@ -12,11 +12,11 @@
       <div class="w-full max-w-sm bg-white rounded-lg shadow p-6">
         <h1 class="text-xl font-semibold text-gray-800 mb-1">Tablero de Pendientes</h1>
         <p class="text-sm text-gray-500 mb-5">Acceso restringido. Inicia sesión con tu correo autorizado.</p>
-        <form id="loginForm" class="space-y-3">
+        <form id="loginForm" class="space-y-3" novalidate>
           <div>
-            <label class="block text-xs text-gray-600 mb-1" for="loginEmail">Correo</label>
-            <input id="loginEmail" type="email" required autocomplete="email"
-              class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="tu@correo.com" />
+            <label class="block text-xs text-gray-600 mb-1" for="loginEmail">Usuario o correo</label>
+            <input id="loginEmail" type="text" required autocomplete="username"
+              class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="ej. adrianportillo" />
           </div>
           <div>
             <label class="block text-xs text-gray-600 mb-1" for="loginPassword">Contraseña</label>
