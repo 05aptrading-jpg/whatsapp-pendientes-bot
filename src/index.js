@@ -139,6 +139,19 @@ async function handleBoardMessage(sock, msg, remoteJid) {
  * Flujo de grupos monitoreados: filtro por IA -> crear incidente -> publicar en
  * el Grupo Tablero.
  */
+/**
+ * Detecta el área responsable por prefijo al inicio del mensaje.
+ * Formato aceptado: "QA: ...", "PE: ...", "MFG: ..." (case insensitive).
+ * Devuelve { area, textoSinPrefijo } donde area es 'Calidad', 'Producto' o 'Manufactura'
+ * (o '' si no hay prefijo reconocible).
+ */
+function extraerAreaResponsable(texto) {
+  const m = String(texto ?? '').match(/^\s*(QA|PE|MFG)\s*[:：]?\s*(.*)$/i);
+  if (!m) return { area: '', textoSinPrefijo: String(texto ?? '') };
+  const mapa = { QA: 'Calidad', PE: 'Producto', MFG: 'Manufactura' };
+  return { area: mapa[m[1].toUpperCase()], textoSinPrefijo: m[2].trim() };
+}
+
 async function handleGroupMessage(sock, msg, remoteJid) {
   const key = msg?.key || {};
   if (!key.participant) return; // mensaje sin participante (ej. sistema)
@@ -170,6 +183,10 @@ async function handleGroupMessage(sock, msg, remoteJid) {
     return;
   }
 
+  // Extraer área responsable por prefijo (QA/PE/MFG) y limpiarla del resumen
+  const { area, textoSinPrefijo } = extraerAreaResponsable(extractText(msg.message));
+  const resumenFinal = filter.problema_resumen || textoSinPrefijo;
+
   const code = `INC-${Date.now()}`; // reemplazado por el código real (INC-<id serial>) tras insertar
   const { data: incident, error: dbErr } = await supabase
     .from('incidents')
@@ -179,7 +196,8 @@ async function handleGroupMessage(sock, msg, remoteJid) {
       source_group_name: ctx.source_group_name,
       involved_user: ctx.sender_name,
       raw_message: extractText(msg.message),
-      problem_summary: filter.problema_resumen,
+      problem_summary: resumenFinal,
+      area_responsable: area,
       status: 'ABIERTO',
     })
     .select('id')
@@ -194,11 +212,12 @@ async function handleGroupMessage(sock, msg, remoteJid) {
   const realCode = `INC-${incident.id}`;
   await supabase.from('incidents').update({ code: realCode }).eq('id', incident.id);
 
+  const areaTxt = area ? ` | *Área:* ${area}` : '';
   const boardText = [
-    `🔴 *[${realCode}]* | *Estado:* ABIERTO`,
+    `🔴 *[${realCode}]* | *Estado:* ABIERTO${areaTxt}`,
     `*Grupo:* ${ctx.source_group_name}`,
     `*Involucrado:* ${ctx.sender_name}`,
-    `*Problema:* ${filter.problema_resumen}`,
+    `*Problema:* ${resumenFinal}`,
   ].join('\n');
 
   const { data: sent } = await sock.sendMessage(BOARD_GROUP_JID, { text: boardText });

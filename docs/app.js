@@ -3,7 +3,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const state = { records: [], statusFilter: 'TODOS', groupFilter: '', search: '', groups: [], groupSearch: '' };
+const state = { records: [], statusFilter: 'TODOS', groupFilter: '', search: '', groups: [], groupSearch: '', areaFilter: '' };
 
 const COLORS = {
   ABIERTO: 'bg-red-100 text-red-700',
@@ -38,6 +38,7 @@ function filteredRecords() {
     (r) =>
       (state.statusFilter === 'TODOS' || r.status === state.statusFilter) &&
       (!state.groupFilter || r.source_group_jid === state.groupFilter) &&
+      (!state.areaFilter || r.area_responsable === state.areaFilter) &&
       (r.code?.toLowerCase().includes(state.search) || (r.problem_summary || '').toLowerCase().includes(state.search))
   );
 }
@@ -69,6 +70,7 @@ function renderTable(records) {
       <td class="px-4 py-2">${badge(r.status)}</td>
       <td class="px-4 py-2 text-gray-700">${esc(r.source_group_name || '')}</td>
       <td class="px-4 py-2 text-gray-700">${esc(r.involved_user || '')}</td>
+      <td class="px-4 py-2 text-gray-700">${esc(r.area_responsable || '')}</td>
       <td class="px-4 py-2 text-gray-700">${esc(r.problem_summary || '')}</td>
       <td class="px-4 py-2 text-gray-500">${fmtDate(r.created_at)}</td>
       <td class="px-4 py-2 text-gray-500">${r.closed_at ? fmtDate(r.closed_at) : '-'}</td>
@@ -195,6 +197,15 @@ function renderStatusFilters() {
     .join('');
 }
 
+function renderAreaFilter(records) {
+  const areas = [...new Set(records.map((r) => r.area_responsable).filter(Boolean))];
+  document.getElementById('areaFilter').innerHTML = [
+    '<option value="">Todas</option>',
+    ...areas.map((a) => `<option value="${esc(a)}">${esc(a)}</option>`),
+  ].join('');
+  document.getElementById('areaFilter').value = state.areaFilter || '';
+}
+
 function renderGroupFilter(records) {
   const groups = [...new Set(records.map((r) => r.source_group_jid))];
   const byId = new Map(records.map((r) => [r.source_group_jid, r.source_group_name || r.source_group_jid]));
@@ -205,10 +216,19 @@ function renderGroupFilter(records) {
 
 function exportCSV() {
   const rows = filteredRecords();
-  const header = 'codigo,estado,grupo,involucrado,problema,fecha_creacion,fecha_cierre';
+  const header = 'codigo,estado,grupo,involucrado,area,problema,fecha_creacion,fecha_cierre';
   const body = rows
     .map((r) =>
-      [r.code, r.status, r.source_group_name, r.involved_user, r.problem_summary, fmtDate(r.created_at), r.closed_at ? fmtDate(r.closed_at) : '']
+      [
+        r.code,
+        r.status,
+        r.source_group_name,
+        r.involved_user,
+        r.area_responsable,
+        r.problem_summary,
+        fmtDate(r.created_at),
+        r.closed_at ? fmtDate(r.closed_at) : '',
+      ]
         .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
         .join(',')
     )
@@ -228,6 +248,7 @@ async function renderAll() {
   renderKPIs(filteredRecords());
   renderTable(filteredRecords());
   renderGroupFilter(records);
+  renderAreaFilter(records);
   renderStatusFilters();
 }
 
@@ -252,6 +273,10 @@ function wireEvents() {
   });
   document.getElementById('groupFilter').addEventListener('change', (e) => {
     state.groupFilter = e.target.value;
+    renderAll();
+  });
+  document.getElementById('areaFilter').addEventListener('change', (e) => {
+    state.areaFilter = e.target.value;
     renderAll();
   });
   let searchTimer = null;

@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS incidents (
   involved_user     text   NOT NULL,                 -- Usuario involucrado (JID o nombre)
   raw_message       text   NOT NULL,                 -- Texto original del mensaje
   problem_summary   text   NOT NULL,                 -- Resumen del problema principal
+  area_responsable  text   NOT NULL DEFAULT ''       -- Área responsable: QA=Calidad, PE=Producto, MFG=Manufactura
+                                                    -- Detectada por prefijo al inicio: "QA:", "PE:", "MFG:"
   status            text   NOT NULL DEFAULT 'ABIERTO'
                     CHECK (status IN ('ABIERTO', 'CERRADO', 'REABIERTO')),
   board_message_id  text   UNIQUE,                   -- key.id del mensaje enviado al Grupo Tablero
@@ -46,6 +48,9 @@ CREATE TABLE IF NOT EXISTS allowed_emails (
 -- Migración: agregar columna `role` si la tabla ya existía sin ella
 ALTER TABLE allowed_emails ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'invitado'
   CHECK (role IN ('admin', 'invitado'));
+
+-- Migración: agregar columna `area_responsable` si la tabla ya existía sin ella
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS area_responsable text NOT NULL DEFAULT '';
 
 -- Helper: ¿es el usuario actual admin? (SECURITY DEFINER evita recursión RLS)
 CREATE OR REPLACE FUNCTION public.is_admin() RETURNS boolean
