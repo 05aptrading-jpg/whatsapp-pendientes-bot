@@ -327,8 +327,10 @@ function showLogin(msg) {
 function wireAuthEvents() {
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const email = document.getElementById('loginEmail').value.trim();
+    let email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
+    // Usuarios sin correo: si no tiene @, se completa con @bot.local
+    if (email && !email.includes('@')) email = email + '@bot.local';
     const btn = document.getElementById('loginBtn');
     btn.disabled = true; btn.textContent = 'Entrando...';
     const { error } = await supabase.auth.signInWithPassword({ email, password });
