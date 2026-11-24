@@ -120,7 +120,11 @@ function parseFilterResponse(rawText) {
 function conservativeFallback(raw, ctx) {
   // Skill sección 5.2: fallback seguro - no tirar el bot por error de IA
   const text = String(raw ?? '');
-  if (ctx.has_whitelisted_mention === true && text.length > 15) {
+  // Respaldo conservador: si el remitente está en la lista blanca y el mensaje
+  // tiene contenido, se crea el pendiente aunque la IA falle. Esto evita perder
+  // urgencias reales cuando las menciones @ no llegan como mentionedJid
+  // estructurado (común en WhatsApp) o la API de IA está caída.
+  if (ctx.is_sender_whitelisted === true && text.length > 15) {
     return {
       es_problema: true,
       problema_resumen: text.slice(0, 110) + ' [Sin filtrar por IA]',
