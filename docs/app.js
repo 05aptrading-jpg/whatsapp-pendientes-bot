@@ -50,13 +50,13 @@ function renderKPIs(records) {
     const total = closed.reduce((s, r) => s + new Date(r.closed_at).getTime() - new Date(r.created_at).getTime(), 0);
     return total / closed.length;
   })();
-  const kpi = (label, value, cls = 'text-2xl font-bold text-gray-800') =>
-    `<div class="border border-gray-200 rounded-lg p-4"><p class="text-xs uppercase tracking-wide text-gray-500">${label}</p><p class="${cls}">${value}</p></div>`;
+  const kpi = (label, value, cls = 'text-xl sm:text-2xl font-bold text-gray-800') =>
+    `<div class="border border-gray-200 rounded-lg p-3 sm:p-4 bg-white"><p class="text-[10px] sm:text-xs uppercase tracking-wide text-gray-500">${label}</p><p class="${cls}">${value}</p></div>`;
   document.getElementById('kpis').innerHTML = [
     kpi('Abiertos', count('ABIERTO')),
     kpi('Cerrados', count('CERRADO')),
     kpi('Reabiertos', count('REABIERTO')),
-    kpi('Resolución promedio', closedAvg === null ? '-' : fmtDuration(closedAvg), 'text-xl font-bold text-gray-800'),
+    kpi('Resolución promedio', closedAvg === null ? '-' : fmtDuration(closedAvg), 'text-base sm:text-xl font-bold text-gray-800'),
   ].join('');
 }
 

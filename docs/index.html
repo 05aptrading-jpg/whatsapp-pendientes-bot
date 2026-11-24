@@ -7,54 +7,52 @@
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body class="bg-gray-50 min-h-screen font-sans">
-    <header class="bg-white border-b border-gray-200 px-4 py-4">
-      <h1 class="text-xl font-semibold text-gray-800">Tablero de Pendientes</h1>
+    <header class="bg-white border-b border-gray-200 px-4 py-4 sticky top-0 z-10">
+      <h1 class="text-lg sm:text-xl font-semibold text-gray-800">Tablero de Pendientes</h1>
     </header>
 
-    <main class="p-4 max-w-7xl mx-auto space-y-6">
-      <!-- KPIs -->
-      <section aria-label="KPIs" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div id="kpis"></div>
-      </section>
+    <main class="p-3 sm:p-4 max-w-7xl mx-auto space-y-4 sm:space-y-6">
+      <!-- KPIs: la grilla ES el contenedor de las tarjetas -->
+      <section id="kpis" aria-label="KPIs" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"></section>
 
       <!-- Filtros -->
-      <section class="bg-white rounded-lg shadow p-4 flex flex-wrap items-center gap-3" aria-label="Filtros">
-        <div id="statusFilters" class="flex gap-2"></div>
+      <section class="bg-white rounded-lg shadow p-3 sm:p-4 flex flex-wrap items-center gap-2 sm:gap-3" aria-label="Filtros">
+        <div id="statusFilters" class="flex flex-wrap gap-2 w-full sm:w-auto"></div>
         <label class="text-sm text-gray-600 flex items-center gap-2">
-          Grupo origen
-          <select id="groupFilter" class="border border-gray-300 rounded px-2 py-1 text-sm"></select>
+          Grupo
+          <select id="groupFilter" class="border border-gray-300 rounded px-2 py-1 text-sm max-w-[10rem] sm:max-w-none"></select>
         </label>
         <input
           id="searchInput"
           type="search"
           placeholder="Buscar código o problema..."
-          class="border border-gray-300 rounded px-3 py-1.5 text-sm"
+          class="border border-gray-300 rounded px-3 py-1.5 text-sm flex-1 min-w-[10rem]"
         />
         <button
           id="exportBtn"
-          class="ml-auto bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
+          class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50 w-full sm:w-auto"
         >
           Exportar CSV
         </button>
       </section>
 
       <!-- Grupos monitoreados (checkboxes) -->
-      <section class="bg-white rounded-lg shadow p-4" aria-label="Grupos monitoreados">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+      <section class="bg-white rounded-lg shadow p-3 sm:p-4" aria-label="Grupos monitoreados">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
           <div>
             <h2 class="text-base font-semibold text-gray-800">Grupos monitoreados</h2>
             <p class="text-xs text-gray-500">
-              Marca los grupos de los que el bot debe crear pendientes. El cambio se aplica solo (~20 s).
+              Marca los grupos a vigilar. Se aplica en ~20 s tras guardar.
             </p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             <span id="groupsCount" class="text-xs text-gray-500"></span>
-            <span id="groupsDirty" class="text-xs text-amber-600 font-medium hidden">● Cambios sin guardar</span>
+            <span id="groupsDirty" class="text-xs text-amber-600 font-medium hidden">● Sin guardar</span>
             <input
               id="groupSearchInput"
               type="search"
               placeholder="Buscar grupo..."
-              class="border border-gray-300 rounded px-2 py-1 text-sm"
+              class="border border-gray-300 rounded px-2 py-1 text-sm flex-1 sm:flex-none min-w-[8rem]"
             />
             <button
               id="saveGroupsBtn"
@@ -65,28 +63,30 @@
             </button>
           </div>
         </div>
-        <div id="groupsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-80 overflow-y-auto pr-1">
+        <div id="groupsList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-72 sm:max-h-80 overflow-y-auto pr-1">
           <p class="text-sm text-gray-400">Cargando grupos...</p>
         </div>
         <p id="groupsError" class="text-xs text-red-600 mt-2 hidden"></p>
       </section>
 
-      <!-- Tabla -->
-      <section class="bg-white rounded-lg shadow overflow-x-auto">
-        <table class="w-full text-sm text-left">
-          <thead class="bg-gray-100 border-b">
-            <tr>
-              <th class="px-4 py-3 font-medium text-gray-600">Código</th>
-              <th class="px-4 py-3 font-medium text-gray-600">Estado</th>
-              <th class="px-4 py-3 font-medium text-gray-600">Grupo</th>
-              <th class="px-4 py-3 font-medium text-gray-600">Involucrado</th>
-              <th class="px-4 py-3 font-medium text-gray-600">Problema principal</th>
-              <th class="px-4 py-3 font-medium text-gray-600">Fecha de creación</th>
-              <th class="px-4 py-3 font-medium text-gray-600">Fecha de cierre</th>
-            </tr>
-          </thead>
-          <tbody id="tableBody"></tbody>
-        </table>
+      <!-- Tabla (scroll horizontal en móvil; en escritorio columnas completas) -->
+      <section class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-left min-w-[720px]">
+            <thead class="bg-gray-100 border-b">
+              <tr>
+                <th class="px-3 sm:px-4 py-3 font-medium text-gray-600">Código</th>
+                <th class="px-3 sm:px-4 py-3 font-medium text-gray-600">Estado</th>
+                <th class="px-3 sm:px-4 py-3 font-medium text-gray-600">Grupo</th>
+                <th class="px-3 sm:px-4 py-3 font-medium text-gray-600">Involucrado</th>
+                <th class="px-3 sm:px-4 py-3 font-medium text-gray-600">Problema principal</th>
+                <th class="px-3 sm:px-4 py-3 font-medium text-gray-600">Creación</th>
+                <th class="px-3 sm:px-4 py-3 font-medium text-gray-600">Cierre</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
         <div id="emptyState" class="p-8 text-center text-gray-400">
           No hay pendientes para los filtros seleccionados.
         </div>
