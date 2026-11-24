@@ -367,13 +367,8 @@ async function init() {
   } else {
     showLogin('');
   }
-  // Reaccionar solo a cierre de sesión explícito (evita pisar el login con SIGNED_OUT interno)
-  supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_OUT') {
-      showLogin('');
-      document.getElementById('loginForm').reset();
-    }
-  });
+  // No reaccionamos a onAuthStateChange: Supabase emite SIGNED_OUT transitorio
+  // durante el login y eso volvía a ocultar la app. El logout ya limpia la UI.
 }
 
 init();
