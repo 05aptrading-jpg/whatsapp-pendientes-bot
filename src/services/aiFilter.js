@@ -1,4 +1,5 @@
 import { logger } from '../config.js';
+import { sendTelegramAlert } from '../utils/telegramAlert.js';
 
 /**
  * System prompt del filtro de incidentes (espejo de skills/incident_filter.md).
@@ -170,6 +171,9 @@ async function callAi(userPayload) {
     }
   }
   logger.error({ provider, totalKeys: keys.length, lastErr }, 'Todas las claves de IA fallaron');
+  void sendTelegramAlert(
+    `Todas las claves de IA (${keys.length}) fallaron con el proveedor *${provider}*.\nÚltimo error: ${lastErr?.message ?? 'desconocido'}`,
+  );
   return null;
 }
 
