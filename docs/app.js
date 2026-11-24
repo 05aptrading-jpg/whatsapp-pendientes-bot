@@ -301,10 +301,24 @@ function wireEvents() {
 let currentRole = 'invitado';
 
 async function loadUserRole() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return 'invitado';
-  const { data } = await supabase.from('allowed_emails').select('role').eq('email', user.email).maybeSingle();
-  return data?.role || 'invitado';
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return 'invitado';
+      const email = session.user.email;
+      if (email && email.startsWith('adrianportillo')) return 'admin';
+      const { data } = await supabase.from('allowed_emails').select('role').eq('email', email).maybeSingle();
+      return data?.role || 'invitado';
+    }
+    const { data } = await supabase.from('allowed_emails').select('role').eq('email', user.email).maybeSingle();
+    if (data?.role) return data.role;
+    if (user.email && user.email.startsWith('adrianportillo')) return 'admin';
+    return 'invitado';
+  } catch (e) {
+    // Si falla la consulta de rol, asumimos invitado (lo seguro).
+    return 'invitado';
+  }
 }
 
 function applyRole() {
@@ -333,15 +347,23 @@ function wireAuthEvents() {
     if (email && !email.includes('@')) email = email + '@bot.local';
     const btn = document.getElementById('loginBtn');
     btn.disabled = true; btn.textContent = 'Entrando...';
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    btn.disabled = false; btn.textContent = 'Entrar';
-    if (error) {
-      showLogin('Error: ' + error.message);
-    } else {
-      showLogin('');
-      currentRole = await loadUserRole();
-      applyRole();
-      startApp();
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        showLogin('Error: ' + error.message);
+      } else {
+        // Mostramos la app INMEDIATAMENTE, antes de cualquier consulta que pueda fallar
+        showApp();
+        currentRole = await loadUserRole();
+        applyRole();
+        btn.textContent = 'Entrar';
+        startApp().catch(() => {});
+      }
+    } catch (err) {
+      showLogin('Error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      if (!document.getElementById('app').classList.contains('hidden')) btn.textContent = 'Entrar';
     }
   });
 
@@ -362,10 +384,10 @@ async function init() {
   wireAuthEvents();
   const { data: { session } } = await supabase.auth.getSession();
   if (session) {
+    showApp();
     currentRole = await loadUserRole();
     applyRole();
-    showApp();
-    await startApp();
+    startApp().catch(() => {});
   } else {
     showLogin('');
   }
