@@ -36,11 +36,25 @@ CREATE TABLE IF NOT EXISTS monitored_groups (
   added_at   timestamptz NOT NULL DEFAULT now()
 );
 
--- 4) Tabla `allowed_emails`: correos con acceso al dashboard.
+-- 4) Tabla `allowed_emails`: correos con acceso al dashboard y su rol.
 CREATE TABLE IF NOT EXISTS allowed_emails (
   email     text PRIMARY KEY,
+  role      text NOT NULL DEFAULT 'invitado' CHECK (role IN ('admin', 'invitado')),
   added_at  timestamptz NOT NULL DEFAULT now()
 );
+
+-- Migración: agregar columna `role` si la tabla ya existía sin ella
+ALTER TABLE allowed_emails ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'invitado'
+  CHECK (role IN ('admin', 'invitado'));
+
+-- Helper: ¿es el usuario actual admin? (SECURITY DEFINER evita recursión RLS)
+CREATE OR REPLACE FUNCTION public.is_admin() RETURNS boolean
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM allowed_emails
+    WHERE lower(email) = lower(coalesce(auth.jwt()->>'email', '')) AND role = 'admin'
+  );
+$$;
 
 -- 5) Permisos: el bot usa service_role en TODAS las tablas.
 GRANT ALL ON incidents, whitelist, monitored_groups, allowed_emails TO service_role;
@@ -74,22 +88,37 @@ ALTER TABLE incidents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE monitored_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE allowed_emails ENABLE ROW LEVEL SECURITY;
 
--- Limpiar políticas antiguas de anon (acceso público) si existieran
+-- Limpiar políticas anteriores
 DROP POLICY IF EXISTS "anon_select_incidents" ON incidents;
 DROP POLICY IF EXISTS "anon_select_monitored_groups" ON monitored_groups;
 DROP POLICY IF EXISTS "anon_update_monitored_groups" ON monitored_groups;
+DROP POLICY IF EXISTS "auth_select_incidents" ON incidents;
+DROP POLICY IF EXISTS "auth_select_monitored_groups" ON monitored_groups;
+DROP POLICY IF EXISTS "auth_update_monitored_groups" ON monitored_groups;
+DROP POLICY IF EXISTS "auth_select_allowed_emails" ON allowed_emails;
 
 DO $$
 BEGIN
-  -- incidents: lectura para usuarios autenticados
+  -- incidents: lectura para cualquier usuario autenticado (admin o invitado)
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='incidents' AND policyname='auth_select_incidents') THEN
     CREATE POLICY "auth_select_incidents" ON incidents FOR SELECT TO authenticated USING (true);
   END IF;
-  -- monitored_groups: lectura y update del checkbox para autenticados
+  -- monitored_groups: SOLO admin puede listar y cambiar los checkboxes
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='monitored_groups' AND policyname='auth_select_monitored_groups') THEN
-    CREATE POLICY "auth_select_monitored_groups" ON monitored_groups FOR SELECT TO authenticated USING (true);
+    CREATE POLICY "auth_select_monitored_groups" ON monitored_groups FOR SELECT TO authenticated USING (public.is_admin());
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='monitored_groups' AND policyname='auth_update_monitored_groups') THEN
-    CREATE POLICY "auth_update_monitored_groups" ON monitored_groups FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+    CREATE POLICY "auth_update_monitored_groups" ON monitored_groups FOR UPDATE TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+  END IF;
+  -- allowed_emails: el usuario autenticado puede leer SU PROPIA fila (para saber su rol)
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='allowed_emails' AND policyname='auth_select_allowed_emails') THEN
+    CREATE POLICY "auth_select_allowed_emails" ON allowed_emails FOR SELECT TO authenticated
+      USING (lower(email) = lower(coalesce(auth.jwt()->>'email', '')));
   END IF;
 END $$;
+
+GRANT SELECT ON allowed_emails TO authenticated;
+
+-- 9) Usuario administrador inicial (editar email según tu cuenta)
+INSERT INTO allowed_emails (email, role) VALUES ('adrianportillo.99@hotmail.com', 'admin')
+  ON CONFLICT (email) DO UPDATE SET role = 'admin';

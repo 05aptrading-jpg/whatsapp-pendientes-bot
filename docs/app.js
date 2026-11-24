@@ -298,6 +298,20 @@ function wireEvents() {
 }
 
 // ---------- Autenticación ----------
+let currentRole = 'invitado';
+
+async function loadUserRole() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return 'invitado';
+  const { data } = await supabase.from('allowed_emails').select('role').eq('email', user.email).maybeSingle();
+  return data?.role || 'invitado';
+}
+
+function applyRole() {
+  const section = document.getElementById('groupsSection');
+  if (section) section.classList.toggle('hidden', currentRole !== 'admin');
+}
+
 function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
@@ -323,6 +337,8 @@ function wireAuthEvents() {
       showLogin('Error: ' + error.message);
     } else {
       showLogin('');
+      currentRole = await loadUserRole();
+      applyRole();
       startApp();
     }
   });
@@ -336,7 +352,7 @@ function wireAuthEvents() {
 
 async function startApp() {
   await renderAll();
-  await renderGroupsAll();
+  if (currentRole === 'admin') await renderGroupsAll();
   wireEvents();
 }
 
@@ -344,6 +360,8 @@ async function init() {
   wireAuthEvents();
   const { data: { session } } = await supabase.auth.getSession();
   if (session) {
+    currentRole = await loadUserRole();
+    applyRole();
     showApp();
     await startApp();
   } else {
