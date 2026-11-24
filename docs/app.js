@@ -95,7 +95,9 @@ function renderGroups() {
     (g) => !q || (g.group_name || '').toLowerCase().includes(q) || g.jid.toLowerCase().includes(q)
   );
   const activeCount = state.groups.filter((g) => g.active).length;
-  document.getElementById('groupsCount').textContent = `${activeCount} activos de ${state.groups.length}`;
+  const countText = `${activeCount} activos de ${state.groups.length}`;
+  document.getElementById('groupsCount').textContent = countText;
+  document.getElementById('groupsBadge').textContent = countText;
 
   if (!shown.length) {
     list.innerHTML = '<p class="text-sm text-gray-400 col-span-full">No hay grupos que coincidan.</p>';
@@ -121,6 +123,17 @@ function setDirty(dirty) {
   document.getElementById('saveGroupsBtn').disabled = !dirty;
 }
 
+// Colapsar/expandir la sección de grupos (recuerda la preferencia).
+function setGroupsCollapsed(collapsed) {
+  const body = document.getElementById('groupsBody');
+  const chevron = document.getElementById('groupsChevron');
+  const btn = document.getElementById('toggleGroupsBtn');
+  body.classList.toggle('hidden', collapsed);
+  chevron.style.transform = collapsed ? '-rotate-90' : '';
+  btn.setAttribute('aria-expanded', String(!collapsed));
+  try { localStorage.setItem('groupsCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+}
+
 // Los cambios de checkbox quedan "pendientes" en memoria hasta presionar Guardar.
 function toggleGroup(jid, active) {
   const g = state.groups.find((x) => x.jid === jid);
@@ -138,7 +151,9 @@ function toggleGroup(jid, active) {
     }
   }
   const activeCount = state.groups.filter((x) => x.active).length;
-  document.getElementById('groupsCount').textContent = `${activeCount} activos de ${state.groups.length}`;
+  const countText = `${activeCount} activos de ${state.groups.length}`;
+  document.getElementById('groupsCount').textContent = countText;
+  document.getElementById('groupsBadge').textContent = countText;
 }
 
 async function saveGroups() {
@@ -265,6 +280,15 @@ function wireEvents() {
 
   // Guardar con el botón
   document.getElementById('saveGroupsBtn').addEventListener('click', saveGroups);
+
+  // Colapsar / expandir
+  document.getElementById('toggleGroupsBtn').addEventListener('click', () => {
+    const body = document.getElementById('groupsBody');
+    setGroupsCollapsed(!body.classList.contains('hidden'));
+  });
+  let savedCollapsed = false;
+  try { savedCollapsed = localStorage.getItem('groupsCollapsed') === '1'; } catch (e) {}
+  setGroupsCollapsed(savedCollapsed);
 
   // Refrescar los checkboxes solo si no hay cambios pendientes de guardar
   setInterval(() => {

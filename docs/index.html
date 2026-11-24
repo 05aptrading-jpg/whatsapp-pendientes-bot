@@ -36,37 +36,54 @@
         </button>
       </section>
 
-      <!-- Grupos monitoreados (checkboxes) -->
-      <section class="bg-white rounded-lg shadow p-3 sm:p-4" aria-label="Grupos monitoreados">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-          <div>
-            <h2 class="text-base font-semibold text-gray-800">Grupos monitoreados</h2>
-            <p class="text-xs text-gray-500">
-              Marca los grupos a vigilar. Se aplica en ~20 s tras guardar.
-            </p>
+      <!-- Grupos monitoreados (colapsable) -->
+      <section class="bg-white rounded-lg shadow" aria-label="Grupos monitoreados">
+        <button
+          id="toggleGroupsBtn"
+          type="button"
+          class="w-full flex items-center justify-between p-3 sm:p-4 text-left hover:bg-gray-50 rounded-t-lg"
+          aria-expanded="true"
+          aria-controls="groupsBody"
+        >
+          <span class="flex items-center gap-2">
+            <svg id="groupsChevron" class="h-5 w-5 text-gray-500 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+            <span>
+              <span class="block text-base font-semibold text-gray-800">Grupos monitoreados</span>
+              <span id="groupsSummary" class="block text-xs text-gray-500">Marca los grupos a vigilar. Se aplica en ~20 s tras guardar.</span>
+            </span>
+          </span>
+          <span id="groupsBadge" class="text-xs text-gray-500"></span>
+        </button>
+
+        <div id="groupsBody" class="px-3 sm:px-4 pb-3 sm:pb-4">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="groupsCount" class="text-xs text-gray-500"></span>
+              <span id="groupsDirty" class="text-xs text-amber-600 font-medium hidden">● Sin guardar</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <input
+                id="groupSearchInput"
+                type="search"
+                placeholder="Buscar grupo..."
+                class="border border-gray-300 rounded px-2 py-1 text-sm flex-1 sm:flex-none min-w-[8rem]"
+              />
+              <button
+                id="saveGroupsBtn"
+                class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                Guardar
+              </button>
+            </div>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <span id="groupsCount" class="text-xs text-gray-500"></span>
-            <span id="groupsDirty" class="text-xs text-amber-600 font-medium hidden">● Sin guardar</span>
-            <input
-              id="groupSearchInput"
-              type="search"
-              placeholder="Buscar grupo..."
-              class="border border-gray-300 rounded px-2 py-1 text-sm flex-1 sm:flex-none min-w-[8rem]"
-            />
-            <button
-              id="saveGroupsBtn"
-              class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled
-            >
-              Guardar
-            </button>
+          <div id="groupsList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-72 sm:max-h-80 overflow-y-auto pr-1">
+            <p class="text-sm text-gray-400">Cargando grupos...</p>
           </div>
+          <p id="groupsError" class="text-xs text-red-600 mt-2 hidden"></p>
         </div>
-        <div id="groupsList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-72 sm:max-h-80 overflow-y-auto pr-1">
-          <p class="text-sm text-gray-400">Cargando grupos...</p>
-        </div>
-        <p id="groupsError" class="text-xs text-red-600 mt-2 hidden"></p>
       </section>
 
       <!-- Tabla (scroll horizontal en móvil; en escritorio columnas completas) -->
