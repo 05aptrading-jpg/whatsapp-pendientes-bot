@@ -2,44 +2,50 @@ import { logger } from '../config.js';
 import { sendTelegramAlert } from '../utils/telegramAlert.js';
 
 /**
- * System prompt del filtro de incidentes (espejo de skills/incident_filter.md).
- * Llm responde EXCLUSIVAMENTE con un JSON estricto.
+ * System prompt del filtro de incidentes.
+ * Llm evalúa el mensaje completo y responde EXCLUSIVAMENTE con un JSON estricto.
+ * EL LLM DECIDE TODO: si es problema, el área, el resumen, el motivo de descarte.
+ * Esto hace el sistema robusto ante infinitas variantes de escritura de 16 personas.
  */
 const SYSTEM_PROMPT = [
-  'Eres un analista operativo encargado de filtrar mensajes de grupos de WhatsApp para detectar únicamente problemas reales, fallas, bloqueos o solicitudes pendientes que requieran atención.',
+  'Eres un analista operativo para el sistema de incidentes WhatsApp. Tu trabajo es evaluar cada mensaje y clasificarlo.',
   '',
-  'Tu tarea es analizar el mensaje recibido y responder EXCLUSIVAMENTE con un objeto JSON válido, sin texto adicional, sin bloques markdown (```json) y sin explicaciones fuera del JSON.',
+  '### Tareas principales (LLM debe decidir todas):',
+  '1. ¿ES PROBLEMA? Clasifica si el mensaje representa un problema real, falla, bloqueo, solicitud de acción o pendiente operativo.',
+  '   - SÍ: hay fallas técnicas, bloqueos, solicitudes de ayuda con acción clara, errores de equipos, quejas con seguimiento necesario.',
+  '   - NO: saludos, cortesías, charla casual, avisos informativos resueltos, preguntas triviales, memes sin acción.',
   '',
-  '### Criterios para clasificar como `es_problema: true`',
-  '1. Reportes de fallas técnicas, errores de sistema, caídas de servicio o equipos dañados.',
-  '2. Bloqueos operativos, retrasos críticos, falta de insumos o incidencias con clientes/proveedores.',
-  '3. Solicitudes directas de acción, revisión urgente o soporte dirigidas a alguien del equipo (especialmente cuando etiquetan con @usuario).',
-  '4. Quejas o alertas que requieran seguimiento hasta resolverse.',
+  '2. ÁREA RESPONSABLE Si es problema, ¿qué área? Usa estos prefijos (o variantes naturales):',
+  '   - "QA:" o variantes -> "Calidad"',
+  '   - "PE:" o variantes -> "Producto"',
+  '   - "MFG:" o variantes -> "Manufactura"',
+  '   - Si no menciona área explícita, pero el problema es obvio para ese departamento, usa el más probable.',
+  '   - Si realmente no se puede determinar, "" (cadena vacía).',
   '',
-  '### Instrucción adicional: detección de área responsable',
-  'Si el mensaje menciona un área usando prefijos "QA:", "PE:" o "MFG:" (o variantes como "Team QA:", "Equipo QA:"), incluye el campo `area_responsable` en el JSON de salida con el nombre exacto: "Calidad", "Producto" o "Manufactura".',
-  'Si no menciona ningún área, asigna cadena vacía `""` para `area_responsable`.',
-  'Siempre incluye este campo en la salida JSON, aunque sea vacío.',
+  '3. PROBLEMA RESUMEN Si es problema, describe el problema principal en 4-15 palabras, español neutro, sin saludos ni muletillas.',
+  '   - Ejemplo: "Falla de impresión en caja 2" (no "Hola equipo, oigan perdón la molestia pero...").',
+  '   - Máximo 120 caracteres.',
   '',
-  '### Criterios para clasificar como `es_problema: false` (DESCARTAR)',
-  '1. Saludos, despedidas o cortesías ("buenos días", "gracias", "ok", "enterado", "listo", "va", "👍").',
-  '2. Charla casual, bromas, memes o comentarios sin acción requerida.',
-  '3. Mensajes donde solo se etiqueta a alguien sin explicar ningún problema ni pedir algo (ej. "@Juan mira esto" sin más contexto).',
-  '4. Avisos meramente informativos de algo que ya quedó resuelto y no requiere seguimiento (ej. "ya quedó reiniciado el servidor, todo bien").',
-  '5. Preguntas triviales de coordinación general que no representan un problema ni pendiente operativo (ej. "¿a qué hora es la junta?").',
+  '4. MOTIVO DESCARTE Si NO es problema, ¿por qué? Usa una de estas categorías:',
+  '   - "saludo_o_cortesia"',
+  '   - "charla_casual"',
+  '   - "aviso_resuelto"',
+  '   - "pregunta_trivial"',
+  '   - "otro"',
   '',
-  '### Reglas para redactar `problema_resumen` (cuando `es_problema` es `true`)',
-  '- Debe describir únicamente el **problema principal** de forma directa, objetiva y accionable.',
-  '- Elimina saludos, muletillas, relleno emocional y menciones innecesarias (ej. de "Hola equipo, oigan perdón la molestia pero fíjense que desde hace rato no imprime la factura en caja 2" -> "Falla de impresión de facturas en caja 2").',
-  '- Longitud estricta: entre 4 y 15 palabras (máximo 120 caracteres).',
-  '- Escribe siempre en español neutro y claro.',
-  '',
-  '### Formato de salida obligatorio (JSON estricto)',
+  '### Salida JSON obligatoria (sin markdown, sin texto adicional):',
   '{',
   '  "es_problema": boolean,',
+  '  "area_responsable": "Calidad" | "Producto" | "Manufactura" | "",',
   '  "problema_resumen": string | null,',
-  '  "motivo_descarte": string | null',
+  '  "motivo_descarte": string | null,',
   '}',
+  '',
+  '### Reglas estrictas de salida:',
+  '- Responde SIEMPRE con JSON válido, nada fuera.',
+  '- No uses bloques ```json``` ni explicaciones.',
+  '- Si no estás seguro de algún campo, usa valor vacío "" o null, pero cumple el JSON.',
+  '- El campo `es_problema` es la decisión principal: si es false, los otros campos deben reflejar por qué.',
 ].join('\n');
 
 const TIMEOUT_MS = 8000; // Skill: timeout máximo de petición HTTP = 8 segundos
@@ -49,7 +55,7 @@ const MAX_RAW_CHARS = 1000; // Skill: truncar raw_message a los primeros 1,000 c
  * Filtra un mensaje de WhatsApp.
  * @param {string} rawMessage texto extraído del mensaje
  * @param {Object} ctx { source_group_name, sender_name, is_sender_whitelisted, has_whitelisted_mention }
- * @returns {Promise<{es_problema: boolean, problema_resumen: string|null, motivo_descarte: string|null, origen?: string}>}
+ * @returns {Promise<{es_problema: boolean, problema_resumen: string|null, motivo_descarte: string|null, area_responsable: string, origen?: string}>}
  */
 export async function filterMessage(rawMessage, ctx = {}) {
   const raw = String(rawMessage ?? '');
@@ -63,21 +69,16 @@ export async function filterMessage(rawMessage, ctx = {}) {
         es_problema: true,
         problema_resumen: clean.slice(0, 120),
         motivo_descarte: null,
+        area_responsable: '',
         origen: 'hashtag',
       };
     }
-    return { es_problema: false, problema_resumen: null, motivo_descarte: 'hashtag_sin_descripcion' };
+    return { es_problema: false, problema_resumen: null, area_responsable: '', motivo_descarte: 'hashtag_sin_descripcion', origen: 'hashtag' };
   }
 
   // Skill sección 5.4: mensajes muy cortos sin #reporte.
   if (trimmed.length < 6) {
-    return { es_problema: false, problema_resumen: null, motivo_descarte: 'mensaje_muy_corto' };
-  }
-
-  // Saludo/cortesía pura: saludos, gracias, ok, listo, bendiciones, etc.
-  // Si el mensaje SOLO contiene cortesía sin acción, descartar sin llamar a la IA.
-  if (esSaludoOCortesia(trimmed)) {
-    return { es_problema: false, problema_resumen: null, motivo_descarte: 'saludo_o_cortesia' };
+    return { es_problema: false, problema_resumen: null, area_responsable: '', motivo_descarte: 'mensaje_muy_corto', origen: 'corto' };
   }
 
   // Llamada al LLM con el payload de entrada definido en el Skill sección 4.
@@ -92,10 +93,10 @@ export async function filterMessage(rawMessage, ctx = {}) {
 
 function buildUserPayload(ctx, raw) {
   return [
-    `Grupo origen: ${ctx.source_group_name ?? ''}`,
-    `Remitente: ${ctx.sender_name ?? ''}`,
-    `¿Es miembro de lista blanca?: ${ctx.is_sender_whitelisted === true}`,
-    `¿Etiquetaron a alguien de lista blanca?: ${ctx.has_whitelisted_mention === true}`,
+    'Grupo origen: ' + (ctx.source_group_name ?? ''),
+    'Remitente: ' + (ctx.sender_name ?? ''),
+    '¿Es miembro de lista blanca?: ' + (ctx.is_sender_whitelisted === true),
+    '¿Etiquetaron a alguien de lista blanca?: ' + (ctx.has_whitelisted_mention === true),
     'Mensaje:',
     '"""',
     raw,
@@ -116,10 +117,9 @@ function parseFilterResponse(rawText) {
   if (!parsed || typeof parsed !== 'object') return null;
 
   const es_problema = parsed.es_problema === true;
+  const area_responsable = typeof parsed.area_responsable === 'string' ? parsed.area_responsable.trim() : '';
   const problema_resumen = typeof parsed.problema_resumen === 'string' ? parsed.problema_resumen : null;
   const motivo_descarte = typeof parsed.motivo_descarte === 'string' ? parsed.motivo_descarte : null;
-  // Nuevo: área responsable (QA/PE/MFG), viene del LLM con la nueva instrucción
-  const area_responsable = typeof parsed.area_responsable === 'string' ? parsed.area_responsable.trim() : '';
 
   if (es_problema && !problema_resumen) return null; // Skill: fallback conservador
 
@@ -127,7 +127,8 @@ function parseFilterResponse(rawText) {
     es_problema,
     problema_resumen: es_problema ? problema_resumen : null,
     motivo_descarte: es_problema ? null : motivo_descarte || 'no_problema_ia',
-    area_responsable, // 'Calidad' | 'Producto' | 'Manufactura' | ''
+    area_responsable,
+    origen: parsed.origen || '',
   };
 }
 
@@ -139,15 +140,17 @@ function conservativeFallback(raw, ctx) {
   // urgencias reales cuando las menciones @ no llegan como mentionedJid
   // estructurado (común en WhatsApp) o la API de IA está caída.
   // Pero nunca crear pendiente si es solo saludo/cortesía.
-  if (ctx.is_sender_whitelisted === true && text.length > 15 && !esSaludoOCortesia(text)) {
+  // El LLM ya debería haber decidido esto, pero por seguridad:
+  if (ctx.is_sender_whitelisted === true && text.length > 15) {
     return {
       es_problema: true,
       problema_resumen: text.slice(0, 110) + ' [Sin filtrar por IA]',
+      area_responsable: '',
       motivo_descarte: null,
       origen: 'fallback_ia_error',
     };
   }
-  return { es_problema: false, problema_resumen: null, motivo_descarte: 'error_api_ia' };
+  return { es_problema: false, problema_resumen: null, area_responsable: '', motivo_descarte: 'error_api_ia', origen: 'ia_fallida' };
 }
 
 /**
@@ -194,12 +197,6 @@ async function callAi(userPayload) {
     `Todas las claves de IA (${keys.length}) fallaron con el proveedor *${provider}*.\nÚltimo error: ${lastErr?.message ?? 'desconocido'}`,
   );
   return null;
-}
-
-function startTimeout() {
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
-  return { signal: ac.signal, done: () => clearTimeout(timer) };
 }
 
 async function callGroq(userPayload, key) {
@@ -250,8 +247,9 @@ async function callGemini(userPayload, key) {
 
 /**
  * Detecta si un mensaje es SOLO saludo/cortesía sin acción requerida.
- * Ejemplos: "buenos días", "gracias", "ok", "listo", "va", "bendiciones", "👍", etc.
- * Retorna true si el mensaje NO requiere acción (debe descartarse).
+ * Ya no se usa como filtro previo - el LLM decide eso ahora.
+ * Mantener solo por si se necesita para logging interno.
+ * @param {string} texto 
  */
 function esSaludoOCortesia(texto) {
   const t = String(texto ?? '')
@@ -278,4 +276,4 @@ function esSaludoOCortesia(texto) {
   return palabras.every(p => saludos.includes(p));
 }
 
-export default { filterMessage };
+export default { filterMessage, SYSTEM_PROMPT };

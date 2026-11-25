@@ -61,23 +61,59 @@ function renderKPIs(records) {
   ].join('');
 }
 
+function renderBadge(status) {
+  return `<span class="px-2 py-0.5 rounded text-xs font-medium ${COLORS[status] || 'bg-gray-100 text-gray-700'}">${status}</span>`;
+}
+
 function renderTable(records) {
-  const badge = (s) =>
-    `<span class="px-2 py-0.5 rounded text-xs font-medium ${COLORS[s] || 'bg-gray-100 text-gray-700'}">${s}</span>`;
   const rows = records.map(
     (r) => `<tr class="border-b last:border-0 hover:bg-gray-50">
       <td class="px-4 py-2 text-gray-700">${r.code || ''}</td>
-      <td class="px-4 py-2">${badge(r.status)}</td>
+      <td class="px-4 py-2">${renderBadge(r.status)}</td>
       <td class="px-4 py-2 text-gray-700">${esc(r.source_group_name || '')}</td>
       <td class="px-4 py-2 text-gray-700">${esc(r.involved_user || '')}</td>
       <td class="px-4 py-2 text-gray-700">${esc(r.area_responsable || '')}</td>
       <td class="px-4 py-2 text-gray-700">${esc(r.problem_summary || '')}</td>
       <td class="px-4 py-2 text-gray-500">${fmtDate(r.created_at)}</td>
       <td class="px-4 py-2 text-gray-500">${r.closed_at ? fmtDate(r.closed_at) : '-'}</td>
+      <td class="px-4 py-2">
+        <button class="btn-close text-gray-500 rounded hover:text-red-600" data-code="${r.code}" title="Cerrar incidencia">
+          ✕
+        </button>
+      </td>
     </tr>`
   );
   document.getElementById('tableBody').innerHTML = rows.join('');
   document.getElementById('emptyState').classList.toggle('hidden', rows.length > 0);
+
+  // Agregar event listeners a los botones de cerrar
+  document.querySelectorAll('.btn-close').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const code = e.target.dataset.code;
+      closeIncidentByCode(code);
+    });
+  });
+}
+
+async function closeIncidentByCode(code) {
+  if (!confirm(`¿Seguro que quieres cerrar la incidencia ${code}?`)) return;
+
+  // Usar el API supabase para actualizar el estado
+  const { data, error } = await supabase
+    .from('incidents')
+    .update({ status: 'CERRADO', closed_at: new Date().toISOString() })
+    .eq('code', code)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    alert('Error al cerrar incidencia: ' + error.message);
+    return;
+  }
+
+  // Recargar la tabla para reflejar el cambio
+  renderAll();
+  alert(`Incidencia ${code} cerrada correctamente.`);
 }
 
 async function fetchGroups() {
