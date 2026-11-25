@@ -255,15 +255,12 @@ async function handleGroupMessage(sock, msg, remoteJid) {
     return;
   }
 
-  // Extraer área responsable por prefijo (QA/PE/MFG).
-  // Si el mensaje NO tiene QA:/PE:/MFG al inicio, se descarta y no se crea incidencia.
-  const areaInfo = extraerAreaResponsable(extractText(msg.message));
-  if (!areaInfo) {
-    logger.debug({ remoteJid }, 'Descartado: mensaje sin prefijo QA/PE/MFG');
-    return;
-  }
-  const { area, textoSinPrefijo } = areaInfo;
-  const resumenFinal = filter.problema_resumen || textoSinPrefijo;
+  // Área responsable: viene del LLM (ya no usa regex fija).
+  // El propio LLM detecta QA:/PE:/MFG (o variantes) y devuelve el nombre.
+  // Si el LLM no lo detecta, area_responsable será cadena vacía ''.
+  const area = filter.area_responsable || '';
+  // Usar el resumen que ya trae el filtro IA; si está vacío, usar el texto sin el prefijo (aunque el LLM ya lo procesó)
+  const resumenFinal = filter.problema_resumen || extractText(msg.message).slice(0, 120);
 
   const code = `INC-${Date.now()}`; // reemplazado por el código real (INC-<id serial>) tras insertar
   const { data: incident, error: dbErr } = await supabase

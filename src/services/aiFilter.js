@@ -16,6 +16,11 @@ const SYSTEM_PROMPT = [
   '3. Solicitudes directas de acción, revisión urgente o soporte dirigidas a alguien del equipo (especialmente cuando etiquetan con @usuario).',
   '4. Quejas o alertas que requieran seguimiento hasta resolverse.',
   '',
+  '### Instrucción adicional: detección de área responsable',
+  'Si el mensaje menciona un área usando prefijos "QA:", "PE:" o "MFG:" (o variantes como "Team QA:", "Equipo QA:"), incluye el campo `area_responsable` en el JSON de salida con el nombre exacto: "Calidad", "Producto" o "Manufactura".',
+  'Si no menciona ningún área, asigna cadena vacía `""` para `area_responsable`.',
+  'Siempre incluye este campo en la salida JSON, aunque sea vacío.',
+  '',
   '### Criterios para clasificar como `es_problema: false` (DESCARTAR)',
   '1. Saludos, despedidas o cortesías ("buenos días", "gracias", "ok", "enterado", "listo", "va", "👍").',
   '2. Charla casual, bromas, memes o comentarios sin acción requerida.',
@@ -113,6 +118,8 @@ function parseFilterResponse(rawText) {
   const es_problema = parsed.es_problema === true;
   const problema_resumen = typeof parsed.problema_resumen === 'string' ? parsed.problema_resumen : null;
   const motivo_descarte = typeof parsed.motivo_descarte === 'string' ? parsed.motivo_descarte : null;
+  // Nuevo: área responsable (QA/PE/MFG), viene del LLM con la nueva instrucción
+  const area_responsable = typeof parsed.area_responsable === 'string' ? parsed.area_responsable.trim() : '';
 
   if (es_problema && !problema_resumen) return null; // Skill: fallback conservador
 
@@ -120,6 +127,7 @@ function parseFilterResponse(rawText) {
     es_problema,
     problema_resumen: es_problema ? problema_resumen : null,
     motivo_descarte: es_problema ? null : motivo_descarte || 'no_problema_ia',
+    area_responsable, // 'Calidad' | 'Producto' | 'Manufactura' | ''
   };
 }
 
