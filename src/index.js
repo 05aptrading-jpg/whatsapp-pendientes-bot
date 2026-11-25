@@ -185,7 +185,9 @@ function cleanUser(jid) {
  * (o '' si no hay prefijo reconocible).
  */
 function extraerAreaResponsable(texto) {
-  const m = String(texto ?? '').match(/^\s*(QA|PE|MFG)\s*[:：]?\s*(.*)$/i);
+  // Regex flexible: acepta QA:/PE:/MFG: al inicio, opcionalmente seguido de "Team" o "Equipo"
+  // Ejemplos: "PE: texto", "Team PE: texto", "Equipo PE: texto", "QA: texto"
+  const m = String(texto ?? '').match(/^\s*(QA|PE|MFG)\s*(?:Team|Equipo)?\s*[:：]?\s*(.*)$/i);
   if (!m) return null; // Sin prefijo QA/PE/MFG → se descarta el mensaje
   const mapa = { QA: 'Calidad', PE: 'Producto', MFG: 'Manufactura' };
   return { area: mapa[m[1].toUpperCase()], textoSinPrefijo: m[2].trim() };
